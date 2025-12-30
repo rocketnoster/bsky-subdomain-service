@@ -69,8 +69,8 @@ This repository is open-sourced for transparency. Sensitive configurations are e
 
 1.  **Clone the repository**
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/bsky-blog-service.git](https://github.com/YOUR_USERNAME/bsky-blog-service.git)
-    cd bsky-blog-service
+    git clone [https://github.com/YOUR_USERNAME/bsky-blog-service.git](https://github.com/YOUR_USERNAME/bsky-subdomain-service.git)
+    cd bsky-subdomain-service
     npm install
     ```
 
