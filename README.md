@@ -20,6 +20,22 @@ The goal of this project is to:
 1.  **Democratize Identity:** Lower the technical barrier for users to own custom domains.
 2.  **Safety First:** Demonstrate how a handle service can operate safely with strict moderation.
 3.  **Open Source:** Serve as a reference implementation for the AT Protocol community.
+## 🎓 Concept: "Educational Gateway" to Custom Domains
+
+This service is uniquely designed as an **educational funnel** to promote the adoption of **official custom domains** within the Bluesky ecosystem.
+
+1.  **"Try Before You Buy" Experience**
+    Users can experience the benefits of identity ownership (custom handles) for free using a subdomain (e.g., `user.bsky.blog`). This lowers the psychological barrier to entry.
+
+2.  **Intentional Friction (The 30-Day Limit)**
+    To differentiate from paid domains, this service introduces intentional limitations:
+    * **Short Lifespan:** Handles automatically expire every **30 days**.
+    * **Restricted Renewal:** Users can only renew their handles during the **final 3 days** before expiration.
+
+3.  **The "Graduation" Mechanism**
+    This periodic "maintenance cost" serves as a gentle nudge. The system (via its reminder bot) actively encourages long-term users to **"graduate"** by purchasing their own permanent domain (e.g., `user.com`) via Bluesky's official settings, thereby freeing them from monthly renewals and driving revenue to the ecosystem.
+
+---
 
 ## 🛡️ Safety & Transparency Measures (Trust & Safety)
 
