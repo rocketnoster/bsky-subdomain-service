@@ -11,11 +11,11 @@ import { SITE_CONTENT } from './content';
 
 const _GRACE_PERIOD_DAYS = 10;
 const _ARCHIVE_PERIOD_DAYS = 50;
-const _REMIND_DAYS = 3; // ★ 3日前
+const _REMIND_DAYS = 3; 
 
 import { Env, SiteSettings } from './types';
 import { parseMeta } from './utils/helpers';
-import { createAgent, ensureFollowBot, sendRemindPost } from './services/bluesky'; // Import sendRemindPost
+import { createAgent, ensureFollowBot, sendRemindPost } from './services/bluesky'; 
 import { evaluateHandleWithGemini } from './services/gemini';
 import { 
     getDnsRecord, registerDns, updateDnsRecord, deleteDnsRecord, 
@@ -66,7 +66,6 @@ export default {
     }
 };
 
-// ... (handleAction は変更なしのため省略。以前のコードそのまま) ...
 async function handleAction(request: Request, env: Env, settings: SiteSettings): Promise<Response> {
     const formData = await request.formData();
     const mode = formData.get('mode') as string;
@@ -140,7 +139,8 @@ async function handleAction(request: Request, env: Env, settings: SiteSettings):
         if (existing) {
             const meta = parseMeta(existing);
             if (meta.did !== did) return new Response(UI.htmlRegisterPage(handle, bskyHandle, password, identifier, settings, "⚠️ すでに使用されています", lang), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-            await updateDnsRecord(env, existing.id, content, comment);
+            // ★ Fix: pass existing.name
+            await updateDnsRecord(env, existing.id, existing.name, content, comment);
         } else {
             await registerDns(env, handle, content, comment);
         }
@@ -181,7 +181,7 @@ async function handleAction(request: Request, env: Env, settings: SiteSettings):
         
         const activeUsers = records.filter((r: any) => 
             r.name.startsWith('_atproto.') && 
-            !r.name.includes('_') 
+            !r.name.includes('_log.')
         );
 
         for (const r of activeUsers) {
@@ -210,7 +210,7 @@ async function handleAction(request: Request, env: Env, settings: SiteSettings):
         const records = await fetchAllDnsRecords(env);
         const activeUsers = records.filter((r: any) => 
             r.name.startsWith('_atproto.') && 
-            !r.name.includes('_')
+            !r.name.includes('_log.')
         );
         let deletedCount = 0;
 
@@ -232,7 +232,19 @@ async function handleAction(request: Request, env: Env, settings: SiteSettings):
         return new Response(UI.htmlAdminDashboard(agent.session.handle, newRecords, auditLog, settings, password, identifier, [], `🧹 Swept ${deletedCount} zombies`), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
-    // --- Admin Delete / Clear Log (Settings Removed) ---
+    // Force Sweep
+    if (mode === 'admin_force_sweep') {
+        try { await agent.login({ identifier, password }); } catch { return new Response(UI.htmlGatewayPage(settings, "❌ Auth Failed", lang)); }
+        if (agent.session?.did !== SUPER_ADMIN_DID) return new Response(UI.htmlError("Forbidden", lang));
+
+        const resultMsg = await runDailySweep(env);
+
+        const records = await fetchAllDnsRecords(env);
+        const auditLog = getAuditLogsFromRecords(records);
+        return new Response(UI.htmlAdminDashboard(agent.session.handle, records, auditLog, settings, password, identifier, [], resultMsg), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+
+    // --- Admin Delete / Clear Log ---
     if (mode === 'admin_delete') {
         try { await agent.login({ identifier, password }); } catch { return new Response(UI.htmlGatewayPage(settings, "❌ Auth Failed", lang)); }
         if (agent.session?.did !== SUPER_ADMIN_DID) return new Response(UI.htmlError("Forbidden", lang));
@@ -261,8 +273,9 @@ async function handleAction(request: Request, env: Env, settings: SiteSettings):
         if (rec && parseMeta(rec).did === agent.session?.did) {
             const newExp = Math.floor(Date.now() / 1000) + (EXPIRATION_DAYS * 86400);
             const meta = parseMeta(rec);
-            await updateDnsRecord(env, rec.id, `did=${meta.did}`, `old=${meta.old};exp=${newExp};did=${meta.did};status=active`);
-            return new Response(UI.htmlDashboard(handle, { ...meta, exp: newExp }, password, identifier, settings, "✅ Renewed", lang));
+            // ★ Fix: Pass rec.name to updateDnsRecord
+            await updateDnsRecord(env, rec.id, rec.name, `did=${meta.did}`, `old=${meta.old};exp=${newExp};did=${meta.did};status=active`);
+            return new Response(UI.htmlDashboard(handle, { ...meta, exp: newExp }, password, identifier, settings, "✅ Renewed", lang), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
     }
 
@@ -284,41 +297,55 @@ async function handleAction(request: Request, env: Env, settings: SiteSettings):
     return new Response(UI.htmlError("Invalid Request", lang));
 }
 
-// Scheduled Task
-async function runDailySweep(env: Env) {
-    if (!env.BOT_HANDLE) return;
+async function runDailySweep(env: Env): Promise<string> {
+    if (!env.BOT_HANDLE || !env.BOT_PASSWORD) return "❌ Error: BOT_HANDLE or BOT_PASSWORD missing";
+    
     const bot = createAgent();
-    try { await bot.login({ identifier: env.BOT_HANDLE, password: env.BOT_PASSWORD }); } catch { return; }
+    try { 
+        await bot.login({ identifier: env.BOT_HANDLE, password: env.BOT_PASSWORD }); 
+    } catch (e: any) { 
+        return `❌ Bot Login Failed: ${e.message}`; 
+    }
     
     const records = await fetchAllDnsRecords(env);
     const now = Math.floor(Date.now() / 1000);
+    let sentCount = 0;
+    let suspendCount = 0;
+    let archiveCount = 0;
 
     for (const r of records) {
-        if (r.name.includes('_') || r.name.includes(env.BOT_HANDLE)) continue;
+        if (r.name.includes('_log.')) continue;
+        
         const meta = parseMeta(r);
+        
         if (meta.exp === 0) continue; 
 
         const days = Math.ceil((meta.exp - now) / 86400);
 
-        // ★ 1. Reminder (3 days or less, and not yet reminded)
+        // 1. Reminder
         if (days <= _REMIND_DAYS && days > 0 && !meta.reminded && !r.content.includes('status=suspended')) {
             const handle = r.name.replace('_atproto.', '').replace(`.${DOMAIN}`, '') + `.${DOMAIN}`;
             const success = await sendRemindPost(bot, meta.did, handle);
             if (success) {
-                // Update DNS to set reminded=1
                 const newComment = r.comment ? `${r.comment};reminded=1` : `reminded=1`;
-                await updateDnsRecord(env, r.id, r.content, newComment);
+                // ★ Fix: pass r.name
+                await updateDnsRecord(env, r.id, r.name, r.content, newComment);
+                sentCount++;
             }
         }
 
         // 2. Suspend
         if (days <= 0 && days > -_GRACE_PERIOD_DAYS && !r.content.includes('status=suspended')) {
-            await updateDnsRecord(env, r.id, `status=suspended`, `old=${meta.old};exp=${meta.exp};did=${meta.did};status=suspended`);
+            // ★ Fix: pass r.name
+            await updateDnsRecord(env, r.id, r.name, `status=suspended`, `old=${meta.old};exp=${meta.exp};did=${meta.did};status=suspended`);
+            suspendCount++;
         }
         
         // 3. Archive
         if (days <= -_GRACE_PERIOD_DAYS && !r.content.includes('status=archived')) {
-            await updateDnsRecord(env, r.id, `status=archived`, `old=${meta.old};did=${meta.did};status=archived;archived_at=${now}`);
+            // ★ Fix: pass r.name
+            await updateDnsRecord(env, r.id, r.name, `status=archived`, `old=${meta.old};did=${meta.did};status=archived;archived_at=${now}`);
+            archiveCount++;
         }
         
         // 4. Delete
@@ -329,4 +356,6 @@ async function runDailySweep(env: Env) {
             }
         }
     }
+    
+    return `✅ Executed. Sent: ${sentCount}, Suspended: ${suspendCount}, Archived: ${archiveCount}`;
 }

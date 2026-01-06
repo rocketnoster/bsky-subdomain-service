@@ -128,7 +128,7 @@ export function htmlDashboard(h: string, meta: any, pass: string, id: string, s:
     const statusText = days < 0 ? t('dash_expired', lang) : t('dash_active', lang);
     const expText = isVip ? t('dash_admin', lang) : `${days} ${t('dash_days_left', lang)}`;
     
-    // ★ FIX: Get content from SiteSettings based on lang
+    // Get content from SiteSettings based on lang
     const graduateGuide = lang === 'ja' ? s.graduate_guide_jp : s.graduate_guide_en;
 
     return `<!DOCTYPE html><html lang="${lang}"><head><meta name="viewport" content="width=device-width"><style>${CSS}</style></head><body>
@@ -175,15 +175,21 @@ export function htmlDashboard(h: string, meta: any, pass: string, id: string, s:
     </body></html>`; 
 }
 
-// Admin Dashboard (Simplified: Removed Settings Form)
+// Admin Dashboard
 export function htmlAdminDashboard(adminHandle: string, records: any[], auditLogs: string[], settings: SiteSettings, pass: string, id: string, zombies: any[], msg: string = "") {
     const now = Math.floor(Date.now() / 1000);
     
-    // Filter System Records (_site_settings, etc. are not shown as users)
+    // Filter System Records: Exclude logs and admin/support handle
     const realUsers = records.filter((r: any) => {
-        if (r.name.includes('_')) return false; 
+        // Exclude logs
+        if (r.name.includes('_log.')) return false; 
+        
+        // Normalize handle (remove _atproto. and domain suffix)
         const name = r.name.replace('_atproto.', '').replace(`.${DOMAIN}`, '');
-        if (name === '' || name === SUPPORT_HANDLE) return false;
+        
+        // Exclude empty, system handles, or root domain handle
+        if (name === '' || name === SUPPORT_HANDLE || name === 'admin') return false;
+        
         return true;
     });
 
@@ -210,7 +216,24 @@ export function htmlAdminDashboard(adminHandle: string, records: any[], auditLog
     return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width"><style>${CSS}</style></head><body>
     <div style="text-align:center;margin-bottom:20px;"><h1 style="color:#7c3aed;">👑 Admin</h1><p>@${adminHandle}</p>${msg?`<div style="color:green;">${msg}</div>`:''}</div>
     
-    <div class="card" style="border-top: 4px solid #f59e0b;"><h3>🧟 Zombie Cleaner</h3><div style="display:flex;gap:10px;"><form action="/action" method="POST"><input type="hidden" name="mode" value="admin_scan_zombies"><input type="hidden" name="identifier" value="${id}"><input type="hidden" name="appPassword" value="${pass}"><button class="btn-main" style="background:#f59e0b;margin-top:0;">🔍 Scan</button></form><form action="/action" method="POST" onsubmit="return confirm('Sweep ALL?');"><input type="hidden" name="mode" value="admin_sweep_zombies"><input type="hidden" name="identifier" value="${id}"><input type="hidden" name="appPassword" value="${pass}"><button class="btn-main" style="background:#ef4444;margin-top:0;">🧹 Sweep All</button></form></div>${zombies.length > 0 ? `<table style="margin-top:10px;"><thead><tr><th>Handle</th><th>Reason</th><th></th></tr></thead><tbody>${zombieRows}</tbody></table>` : ''}</div>
+    <div class="card" style="border-top: 4px solid #f59e0b;">
+        <h3>🧟 Zombie Cleaner & 🔔 Daily Tasks</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            
+            <form action="/action" method="POST"><input type="hidden" name="mode" value="admin_scan_zombies"><input type="hidden" name="identifier" value="${id}"><input type="hidden" name="appPassword" value="${pass}"><button class="btn-main" style="background:#f59e0b;margin-top:0;">🔍 Scan</button></form>
+            
+            <form action="/action" method="POST" onsubmit="return confirm('Sweep ALL?');"><input type="hidden" name="mode" value="admin_sweep_zombies"><input type="hidden" name="identifier" value="${id}"><input type="hidden" name="appPassword" value="${pass}"><button class="btn-main" style="background:#ef4444;margin-top:0;">🧹 Sweep All</button></form>
+            
+            <form action="/action" method="POST" onsubmit="return confirm('Run daily tasks (Reminders & Archive) NOW?');">
+                <input type="hidden" name="mode" value="admin_force_sweep">
+                <input type="hidden" name="identifier" value="${id}">
+                <input type="hidden" name="appPassword" value="${pass}">
+                <button class="btn-main" style="background:#8b5cf6;margin-top:0;">🔔 Force Sweep</button>
+            </form>
+
+        </div>
+        ${zombies.length > 0 ? `<table style="margin-top:10px;"><thead><tr><th>Handle</th><th>Reason</th><th></th></tr></thead><tbody>${zombieRows}</tbody></table>` : ''}
+    </div>
     
     <div class="card"><h3>🚫 Rejection History</h3>
     <div style="text-align:right;margin-bottom:5px;">

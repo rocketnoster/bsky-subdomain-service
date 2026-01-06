@@ -1,7 +1,7 @@
 // src/content.ts
 
 export const SITE_CONTENT = {
-    status_msg: "Welcome to bsky.blog",
+    status_msg: "Welcome to bsky.blog<br>This project is an independent community initiative and is NOT affiliated with, endorsed by, or connected to Bluesky Social, PBLLC. <br>The bsky.blog domain serves as a prototype to demonstrate automated custom domain issuance on the AT Protocol.",
     
     // --- 卒業（独自ドメイン移行）ガイド ---
     graduate_guide_jp: `

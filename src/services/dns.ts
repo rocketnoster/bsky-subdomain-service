@@ -21,11 +21,12 @@ export async function registerDns(env: Env, h: string, c: string, cm: string) {
     });
 }
 
-export async function updateDnsRecord(env: Env, id: string, c: string, cm: string) {
+// ★ Modified: Added 'name' parameter
+export async function updateDnsRecord(env: Env, id: string, name: string, c: string, cm: string) {
     await fetch(`https://api.cloudflare.com/client/v4/zones/${env.CLOUDFLARE_ZONE_ID}/dns_records/${id}`, { 
         method: 'PUT', 
         headers: { 'Authorization': `Bearer ${env.CLOUDFLARE_API_TOKEN}`, 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ type: "TXT", content: c, ttl: 60, comment: cm }) 
+        body: JSON.stringify({ type: "TXT", name: name, content: c, ttl: 60, comment: cm }) 
     });
 }
 
